@@ -5,10 +5,10 @@ import os
 from datetime import datetime
 import threading
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
 class NMEAData:
     def __init__(self, sentence_type, data, data_list):
+        self.baudrate = None
+        self.port = None
         self.sentence_type = sentence_type
         self.data = data
         self.data_list = data_list  # List to store parsed NMEA data
@@ -252,19 +252,22 @@ class NMEAData:
         else:
             return f"Unsupported NMEA sentence type: {self.sentence_type}"
 
-    def write_to_excel(self, filename="nmea_data.xlsx"):
+    def write_to_excel(self, port, baudrate, filename="nmea_data.xlsx"):
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')  # Add microseconds for uniqueness
         # Convert all datetime columns to timezone-naive (removes timezone information)
         for entry in self.data_list:
             if 'Timestamp' in entry and isinstance(entry['Timestamp'], pd.Timestamp):
                 entry['Timestamp'] = entry['Timestamp'].tz_localize(None)  # Remove timezone information
 
         df = pd.DataFrame(self.data_list)
-        df.to_excel(f"logs/nmea_data_{port}_{baudrate}_{timestamp}.xlsx", index=False)
-        print(f"Data written to {filename}")
+        # Ensure unique filename with port, baudrate, and timestamp
+        df.to_excel(f"logs/nmea_parsed_data_{port}_{baudrate}_{timestamp}.xlsx", index=False)
+        print(f"Data written to logs/nmea_parsed_data_{port}_{baudrate}_{timestamp}.xlsx")
 
 
 def read_nmea_data(port, baudrate, timeout):
     data_list = []  # Initialize a list to store NMEA data
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if not os.path.exists("logs"):
         os.makedirs("logs")
     log_file = open(f"logs/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a")
@@ -325,12 +328,12 @@ def read_nmea_data(port, baudrate, timeout):
     log_file.close()
 
     # After reading data, write it to an Excel file
-    nmea_data_obj.write_to_excel()
+    nmea_data_obj.write_to_excel(port, baudrate)
 
 if __name__ == "__main__":
     ports = ['COM9', 'COM15']  # Example of two COM ports
     baudrates = [115200, 921600]  # Different baud rates for each port
-    timeouts = [1, 2]  # Different timeouts for each port
+    timeouts = [1, 1]  # Different timeouts for each port
     threads = []
 
     for port, baudrate, timeout in zip(ports, baudrates, timeouts):
