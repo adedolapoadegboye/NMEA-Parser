@@ -4,6 +4,8 @@ import pandas as pd
 import os
 from datetime import datetime
 import threading
+from time import time
+
 
 class NMEAData:
     def __init__(self, sentence_type, data, data_list):
@@ -265,12 +267,13 @@ class NMEAData:
         print(f"Data written to logs/nmea_parsed_data_{port}_{baudrate}_{timestamp}.xlsx")
 
 
-def read_nmea_data(port, baudrate, timeout):
+def read_nmea_data(port, baudrate, timeout, duration):
     data_list = []  # Initialize a list to store NMEA data
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    start_time = time()  # Record the start time
     if not os.path.exists("logs"):
         os.makedirs("logs")
-    log_file = open(f"logs/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a")
+    log_file = open(f"logs/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a", encoding="utf-8")
     nmea_data_obj = NMEAData(None, None, data_list)  # Placeholder NMEAData object
 
     try:
@@ -286,10 +289,8 @@ def read_nmea_data(port, baudrate, timeout):
 
         print(f"Connected to serial port {port} with baudrate {baudrate}. Reading data...")
 
-        counter = 0
-
         # Continuously read from the serial port
-        while counter <= 1000:
+        while time() - start_time < duration:
             try:
                 # Read a line of NMEA data from the serial port
                 nmea_sentence = ser.readline().decode('ascii', errors='replace').strip()
@@ -314,7 +315,6 @@ def read_nmea_data(port, baudrate, timeout):
 
                     except pynmea2.ParseError as e:
                         print(f"Failed to parse NMEA sentence: {nmea_sentence} - {e}")
-                counter += 1
 
             except serial.SerialException as e:
                 print(f"Error reading from serial port: {e}")
@@ -331,13 +331,15 @@ def read_nmea_data(port, baudrate, timeout):
     nmea_data_obj.write_to_excel(port, baudrate)
 
 if __name__ == "__main__":
-    ports = ['COM9', 'COM15']  # Example of two COM ports
-    baudrates = [115200, 921600]  # Different baud rates for each port
-    timeouts = [1, 1]  # Different timeouts for each port
+    devices = {
+        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 30},  # Duration in seconds
+        "device 2": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 60}
+    }
+
     threads = []
 
-    for port, baudrate, timeout in zip(ports, baudrates, timeouts):
-        thread = threading.Thread(target=read_nmea_data, args=(port, baudrate, timeout))
+    for device, config in devices.items():
+        thread = threading.Thread(target=read_nmea_data, args=(config["port"], config["baudrate"], config["timeout"], config["duration"]))
         threads.append(thread)
         thread.start()
 
