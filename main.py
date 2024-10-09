@@ -1,7 +1,10 @@
 import serial
 import pynmea2
 import pandas as pd
+import os
+from datetime import datetime
 
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 class NMEAData:
     def __init__(self, sentence_type, data, data_list):
@@ -14,7 +17,7 @@ class NMEAData:
         if self.sentence_type == "GGA":
             self.data_list.append({
                 "Type": "GGA",
-                "Timestamp": self.data.timestamp,
+                "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
                 "Longitude": f"{self.data.longitude} {self.data.lon_dir}",
                 "GPS Quality": self.data.gps_qual,
@@ -42,7 +45,7 @@ class NMEAData:
         elif self.sentence_type == "RMC":
             self.data_list.append({
                 "Type": "RMC",
-                "Timestamp": self.data.timestamp,
+                "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Status": self.data.status,
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
                 "Longitude": f"{self.data.longitude} {self.data.lon_dir}",
@@ -138,7 +141,7 @@ class NMEAData:
                 "Type": "GLL",
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
                 "Longitude": f"{self.data.longitude} {self.data.lon_dir}",
-                "Timestamp": self.data.timestamp,
+                "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Status": self.data.status,
                 "FAA Mode": self.data.faa_mode
             })
@@ -172,7 +175,7 @@ class NMEAData:
         elif self.sentence_type == "GNS":
             self.data_list.append({
                 "Type": "GNS",
-                "Timestamp": self.data.timestamp,
+                "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
                 "Longitude": f"{self.data.longitude} {self.data.lon_dir}",
                 "Mode Indicator": self.data.mode_indicator,
@@ -222,7 +225,7 @@ class NMEAData:
         elif self.sentence_type == "GRS":
             self.data_list.append({
                 "Type": "GRS",
-                "Timestamp": self.data.timestamp,
+                "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Residual Mode": self.data.residuals_mode,
                 "Residuals": [self.data.sv_res_01, self.data.sv_res_02, self.data.sv_res_03, self.data.sv_res_04,
                               self.data.sv_res_05, self.data.sv_res_06, self.data.sv_res_07, self.data.sv_res_08,
@@ -249,13 +252,21 @@ class NMEAData:
             return f"Unsupported NMEA sentence type: {self.sentence_type}"
 
     def write_to_excel(self, filename="nmea_data.xlsx"):
+        # Convert all datetime columns to timezone-naive (removes timezone information)
+        for entry in self.data_list:
+            if 'Timestamp' in entry and isinstance(entry['Timestamp'], pd.Timestamp):
+                entry['Timestamp'] = entry['Timestamp'].tz_localize(None)  # Remove timezone information
+
         df = pd.DataFrame(self.data_list)
-        df.to_excel(filename, index=False)
+        df.to_excel(f"logs/nmea_data_{timestamp}.xlsx", index=False)
         print(f"Data written to {filename}")
 
 
 def read_nmea_data():
     data_list = []  # Initialize a list to store NMEA data
+    if not os.path.exists("logs"):
+        os.makedirs("logs")
+    log_file = open(f"logs/nmea_raw_log_{timestamp}.txt", "a")
     nmea_data_obj = NMEAData(None, None, data_list)  # Placeholder NMEAData object
 
     try:
@@ -271,11 +282,15 @@ def read_nmea_data():
 
         print("Connected to serial port. Reading data...")
 
+        counter = 0
+
         # Continuously read from the serial port
-        while True:
+        while counter <= 1000:
             try:
                 # Read a line of NMEA data from the serial port
                 nmea_sentence = ser.readline().decode('ascii', errors='replace').strip()
+
+                log_file.write(nmea_sentence + "\n")
 
                 # Skip proprietary sentences like $PAIR or $PQTM
                 if nmea_sentence.startswith('$P'):
@@ -295,6 +310,7 @@ def read_nmea_data():
 
                     except pynmea2.ParseError as e:
                         print(f"Failed to parse NMEA sentence: {nmea_sentence} - {e}")
+                counter += 1
 
             except serial.SerialException as e:
                 print(f"Error reading from serial port: {e}")
@@ -302,6 +318,10 @@ def read_nmea_data():
 
     except serial.SerialException as e:
         print(f"Error opening serial port: {e}")
+
+    # After reading all raw sentences, write to the log file created
+    print(f"Standard and Proprietary logs written to {log_file}")
+    log_file.close()
 
     # After reading data, write it to an Excel file
     nmea_data_obj.write_to_excel()
