@@ -3,6 +3,7 @@ import pynmea2
 import pandas as pd
 import os
 from datetime import datetime
+import threading
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -258,29 +259,29 @@ class NMEAData:
                 entry['Timestamp'] = entry['Timestamp'].tz_localize(None)  # Remove timezone information
 
         df = pd.DataFrame(self.data_list)
-        df.to_excel(f"logs/nmea_data_{timestamp}.xlsx", index=False)
+        df.to_excel(f"logs/nmea_data_{port}_{baudrate}_{timestamp}.xlsx", index=False)
         print(f"Data written to {filename}")
 
 
-def read_nmea_data():
+def read_nmea_data(port, baudrate, timeout):
     data_list = []  # Initialize a list to store NMEA data
     if not os.path.exists("logs"):
         os.makedirs("logs")
-    log_file = open(f"logs/nmea_raw_log_{timestamp}.txt", "a")
+    log_file = open(f"logs/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a")
     nmea_data_obj = NMEAData(None, None, data_list)  # Placeholder NMEAData object
 
     try:
         # Configure the serial port
         ser = serial.Serial(
-            port='COM9',  # Your serial port, e.g., COM9 for Windows
-            baudrate=115200,  # Baud rate
+            port=port,  # Your serial port, e.g., COM9 for Windows
+            baudrate=baudrate,  # Baud rate
             bytesize=serial.EIGHTBITS,  # 8 data bits
             parity=serial.PARITY_NONE,  # No parity
             stopbits=serial.STOPBITS_ONE,  # 1 stop bit
-            timeout=1  # Timeout in seconds
+            timeout=timeout  # Timeout in seconds
         )
 
-        print("Connected to serial port. Reading data...")
+        print(f"Connected to serial port {port} with baudrate {baudrate}. Reading data...")
 
         counter = 0
 
@@ -320,12 +321,22 @@ def read_nmea_data():
         print(f"Error opening serial port: {e}")
 
     # After reading all raw sentences, write to the log file created
-    print(f"Standard and Proprietary logs written to {log_file}")
+    print(f"Standard and Proprietary logs written to {log_file} for port {port} with baudrate {baudrate}")
     log_file.close()
 
     # After reading data, write it to an Excel file
     nmea_data_obj.write_to_excel()
 
-
 if __name__ == "__main__":
-    read_nmea_data()
+    ports = ['COM9', 'COM15']  # Example of two COM ports
+    baudrates = [115200, 921600]  # Different baud rates for each port
+    timeouts = [1, 2]  # Different timeouts for each port
+    threads = []
+
+    for port, baudrate, timeout in zip(ports, baudrates, timeouts):
+        thread = threading.Thread(target=read_nmea_data, args=(port, baudrate, timeout))
+        threads.append(thread)
+        thread.start()
+
+    for thread in threads:
+        thread.join()  # Ensure all threads complete
