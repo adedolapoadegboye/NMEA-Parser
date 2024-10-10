@@ -262,8 +262,8 @@ class NMEAData:
 
         df = pd.DataFrame(self.parsed_sentences)
         # Ensure unique filename with port, baudrate, and timestamp
-        df.to_excel(f"logs/NMEA_{timestamp}_Run/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
-        print(f"Data written to logs/NMEA_{timestamp}_Run/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
+        df.to_excel(f"logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
+        print(f"Data written to logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
 
 
 def read_nmea_data(port, baudrate, timeout, duration, log_folder):
@@ -273,10 +273,10 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
     if not os.path.exists("logs"):
         os.makedirs("logs")
 
-    if not os.path.exists(f"logs/NMEA_{timestamp}_Run"):
-        os.makedirs(f"logs/NMEA_{timestamp}_Run")
+    if not os.path.exists(f"logs/NMEA_{timestamp}"):
+        os.makedirs(f"logs/NMEA_{timestamp}")
 
-    raw_nmea_log = open(f"logs/NMEA_{timestamp}_Run/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a", encoding="utf-8")
+    raw_nmea_log = open(f"logs/NMEA_{timestamp}/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a", encoding="utf-8")
     parsed_nmea_data = NMEAData(None, None, parsed_sentences)  # Placeholder NMEAData object
 
     try:
@@ -335,7 +335,7 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
 
 if __name__ == "__main__":
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
-    log_folder = f"logs/NMEA_{timestamp}_Run"
+    log_folder = f"logs/NMEA_{timestamp}"
 
     # Create the log folder for each test run
     os.makedirs(log_folder, exist_ok=True)
@@ -344,9 +344,9 @@ if __name__ == "__main__":
     sys.stdout = open(f"{log_folder}/console_output_{timestamp}.txt", "a", encoding="utf-8")
 
     devices = {
-        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
-        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
-        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 10}  # Timeout and Duration in seconds
+        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 1800},  # Timeout and Duration in seconds
+        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 1800},  # Timeout and Duration in seconds
+        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 1800}  # Timeout and Duration in seconds
     }
 
     threads = []
