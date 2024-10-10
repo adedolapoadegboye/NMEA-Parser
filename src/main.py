@@ -256,16 +256,16 @@ class NMEAData:
             return f"Unsupported NMEA sentence type: {self.sentence_type}"
 
     def write_to_excel(self, port, baudrate, filename="nmea_data"):
-        # Convert all datetime columns to timezone-naive (removes timezone information)
-        for entry in self.parsed_sentences:
-            if 'Timestamp' in entry and isinstance(entry['Timestamp'], pd.Timestamp):
-                entry['Timestamp'] = entry['Timestamp'].tz_localize(None)  # Remove timezone information
+        try:
+            for entry in self.parsed_sentences:
+                if 'Timestamp' in entry and isinstance(entry['Timestamp'], pd.Timestamp):
+                    entry['Timestamp'] = entry['Timestamp'].tz_localize(None)
 
-        df = pd.DataFrame(self.parsed_sentences)
-        # Ensure unique filename with port, baudrate, and timestamp
-        df.to_excel(f"logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
-        logging.info(f"Data written to logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
-
+            df = pd.DataFrame(self.parsed_sentences)
+            df.to_excel(f"logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
+            logging.info(f"Data written to logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
+        except Exception as e:
+            logging.error(f"Error writing to Excel file: {e}")
 
 def read_nmea_data(port, baudrate, timeout, duration, log_folder):
     parsed_sentences = []  # Initialize a list to store NMEA data
@@ -282,16 +282,19 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
 
     try:
         # Configure the serial port
-        ser = serial.Serial(
-            port=port,  # Your serial port, e.g., COM9 for Windows
-            baudrate=baudrate,  # Baud rate
-            bytesize=serial.EIGHTBITS,  # 8 data bits
-            parity=serial.PARITY_NONE,  # No parity
-            stopbits=serial.STOPBITS_ONE,  # 1 stop bit
-            timeout=timeout  # Timeout in seconds
-        )
-
-        logging.info(f"Connected to serial port {port} with baudrate {baudrate}. Reading data...")
+        try:
+            ser = serial.Serial(
+                port=port,
+                baudrate=baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=timeout
+            )
+            logging.info(f"Connected to serial port {port} with baudrate {baudrate}.")
+        except serial.SerialException as e:
+            logging.error(f"Error opening serial port {port}: {e}")
+            return  # Exit function if the port cannot be opened
 
         # Continuously read from the serial port
         while time() - start_time < duration:
@@ -299,7 +302,10 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
                 # Read a line of NMEA data from the serial port
                 nmea_sentence = ser.readline().decode('ascii', errors='replace').strip()
 
-                raw_nmea_log.write(nmea_sentence + "\n")
+                try:
+                    raw_nmea_log.write(nmea_sentence + "\n")
+                except Exception as e:
+                    logging.error(f"Error writing NMEA sentence to log file: {e}")
 
                 # Skip proprietary sentences like $PAIR or $PQTM
                 if nmea_sentence.startswith('$P'):
@@ -335,40 +341,44 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
     parsed_nmea_data.write_to_excel(port, baudrate)
 
 if __name__ == "__main__":
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
-    log_folder = f"logs/NMEA_{timestamp}"
+    try:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
+        log_folder = f"logs/NMEA_{timestamp}"
 
-    # Create the log folder for each test run
-    os.makedirs(log_folder, exist_ok=True)
+        # Create the log folder for each test run
+        os.makedirs(log_folder, exist_ok=True)
 
-    # Redirect console output to a file inside the unique folder
-    # Configure logging to both file and console
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[
-            logging.FileHandler(f"{log_folder}/console_output_{timestamp}.txt", 'a', encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)  # This logs to the console
-        ]
-    )
+        # Configure logging to both file and console
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s [%(levelname)s] %(message)s',
+            handlers=[
+                logging.FileHandler(f"{log_folder}/console_output_{timestamp}.txt", 'a', encoding='utf-8'),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
 
-    devices = {
-        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
-        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 15},  # Timeout and Duration in seconds
-        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 20}  # Timeout and Duration in seconds
-    }
+        devices = {
+            "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 10},
+            "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 15},
+            "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 20}
+        }
 
-    threads = []
+        threads = []
 
-    # Loop through the devices and create a SerialReader thread for each one
-    for device, config in devices.items():
-        thread = threading.Thread(target=read_nmea_data, args=(config["port"], config["baudrate"], config["timeout"], config["duration"], log_folder))
-        threads.append(thread)
-        thread.start()
+        for device, config in devices.items():
+            try:
+                thread = threading.Thread(target=read_nmea_data, args=(config["port"], config["baudrate"], config["timeout"], config["duration"], log_folder))
+                threads.append(thread)
+                thread.start()
+            except Exception as e:
+                logging.error(f"Failed to start thread for {device}: {e}")
 
-    # Ensure all threads complete before exiting
-    for thread in threads:
-        thread.join()
+        for thread in threads:
+            try:
+                thread.join()
+            except Exception as e:
+                logging.error(f"Error while waiting for thread to finish: {e}")
 
-    # Close the redirected stdout (console output) after all threads finish
-    sys.stdout.close()
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
