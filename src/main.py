@@ -2,23 +2,23 @@ import serial
 import pynmea2
 import pandas as pd
 import os
+import sys
 from datetime import datetime
 import threading
 from time import time
 
-
 class NMEAData:
-    def __init__(self, sentence_type, data, data_list):
+    def __init__(self, sentence_type, data, parsed_sentences):
         self.baudrate = None
         self.port = None
         self.sentence_type = sentence_type
         self.data = data
-        self.data_list = data_list  # List to store parsed NMEA data
+        self.parsed_sentences = parsed_sentences  # List to store parsed NMEA data
 
     def __str__(self):
         # Pretty print the data based on sentence type
         if self.sentence_type == "GGA":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GGA",
                 "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
@@ -46,7 +46,7 @@ class NMEAData:
             )
 
         elif self.sentence_type == "RMC":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "RMC",
                 "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Status": self.data.status,
@@ -73,7 +73,7 @@ class NMEAData:
                 f"  Navigational Status: {self.data.nav_status}\n"
             )
         elif self.sentence_type == "GSV":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GSV",
                 "Number of Messages": self.data.num_messages,
                 "Message Number": self.data.msg_num,
@@ -106,7 +106,7 @@ class NMEAData:
                 f"  Satellite 4 PRN: {self.data.sv_prn_num_4} - Elevation: {self.data.elevation_deg_4}° - Azimuth: {self.data.azimuth_4}° - SNR: {self.data.snr_4} dB\n"
             )
         elif self.sentence_type == "GSA":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GSA",
                 "Mode": self.data.mode,
                 "Mode Fix Type": self.data.mode_fix_type,
@@ -125,7 +125,7 @@ class NMEAData:
                 f"  VDOP: {self.data.vdop}\n"
             )
         elif self.sentence_type == "VTG":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "VTG",
                 "True Track": f"{self.data.true_track}°",
                 "Magnetic Track": f"{self.data.mag_track}°",
@@ -140,7 +140,7 @@ class NMEAData:
                 f"  FAA Mode: {self.data.faa_mode}\n"
             )
         elif self.sentence_type == "GLL":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GLL",
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
                 "Longitude": f"{self.data.longitude} {self.data.lon_dir}",
@@ -157,7 +157,7 @@ class NMEAData:
                 f"  FAA Mode: {self.data.faa_mode}\n"
             )
         elif self.sentence_type == "ZDA":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "ZDA",
                 "UTC Time": self.data.timestamp,
                 "Day": self.data.day,
@@ -176,7 +176,7 @@ class NMEAData:
                 f"  Local Zone Minutes: {self.data.local_zone_minutes}\n"
             )
         elif self.sentence_type == "GNS":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GNS",
                 "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Latitude": f"{self.data.latitude} {self.data.lat_dir}",
@@ -203,7 +203,7 @@ class NMEAData:
                 f"  Differential Reference Station ID: {self.data.differential}\n"
             )
         elif self.sentence_type == "GST":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GST",
                 "UTC Time": self.data.timestamp,
                 "RMS Deviation": self.data.rms,
@@ -226,7 +226,7 @@ class NMEAData:
                 f"  Altitude Error (std dev): {self.data.std_dev_altitude}\n"
             )
         elif self.sentence_type == "GRS":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "GRS",
                 "Timestamp": self.data.timestamp.replace(tzinfo=None),
                 "Residual Mode": self.data.residuals_mode,
@@ -241,7 +241,7 @@ class NMEAData:
                 f"  Residuals: {[self.data.sv_res_01, self.data.sv_res_02, self.data.sv_res_03, self.data.sv_res_04, self.data.sv_res_05, self.data.sv_res_06, self.data.sv_res_07, self.data.sv_res_08, self.data.sv_res_09, self.data.sv_res_10, self.data.sv_res_11, self.data.sv_res_12]}\n"
             )
         elif self.sentence_type == "RLM":
-            self.data_list.append({
+            self.parsed_sentences.append({
                 "Type": "RLM",
                 "Beacon ID": self.data.beacon_id,
                 "Message Code": self.data.message_code
@@ -254,27 +254,30 @@ class NMEAData:
         else:
             return f"Unsupported NMEA sentence type: {self.sentence_type}"
 
-    def write_to_excel(self, port, baudrate, filename="nmea_data.xlsx"):
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')  # Add microseconds for uniqueness
+    def write_to_excel(self, port, baudrate, filename="nmea_data"):
         # Convert all datetime columns to timezone-naive (removes timezone information)
-        for entry in self.data_list:
+        for entry in self.parsed_sentences:
             if 'Timestamp' in entry and isinstance(entry['Timestamp'], pd.Timestamp):
                 entry['Timestamp'] = entry['Timestamp'].tz_localize(None)  # Remove timezone information
 
-        df = pd.DataFrame(self.data_list)
+        df = pd.DataFrame(self.parsed_sentences)
         # Ensure unique filename with port, baudrate, and timestamp
-        df.to_excel(f"logs/nmea_parsed_data_{port}_{baudrate}_{timestamp}.xlsx", index=False)
-        print(f"Data written to logs/nmea_parsed_data_{port}_{baudrate}_{timestamp}.xlsx")
+        df.to_excel(f"logs/NMEA_{timestamp}_Run/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
+        print(f"Data written to logs/NMEA_{timestamp}_Run/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
 
 
-def read_nmea_data(port, baudrate, timeout, duration):
-    data_list = []  # Initialize a list to store NMEA data
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+def read_nmea_data(port, baudrate, timeout, duration, log_folder):
+    parsed_sentences = []  # Initialize a list to store NMEA data
     start_time = time()  # Record the start time
+
     if not os.path.exists("logs"):
         os.makedirs("logs")
-    log_file = open(f"logs/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a", encoding="utf-8")
-    nmea_data_obj = NMEAData(None, None, data_list)  # Placeholder NMEAData object
+
+    if not os.path.exists(f"logs/NMEA_{timestamp}_Run"):
+        os.makedirs(f"logs/NMEA_{timestamp}_Run")
+
+    raw_nmea_log = open(f"logs/NMEA_{timestamp}_Run/nmea_raw_log_{port}_{baudrate}_{timestamp}.txt", "a", encoding="utf-8")
+    parsed_nmea_data = NMEAData(None, None, parsed_sentences)  # Placeholder NMEAData object
 
     try:
         # Configure the serial port
@@ -295,7 +298,7 @@ def read_nmea_data(port, baudrate, timeout, duration):
                 # Read a line of NMEA data from the serial port
                 nmea_sentence = ser.readline().decode('ascii', errors='replace').strip()
 
-                log_file.write(nmea_sentence + "\n")
+                raw_nmea_log.write(nmea_sentence + "\n")
 
                 # Skip proprietary sentences like $PAIR or $PQTM
                 if nmea_sentence.startswith('$P'):
@@ -310,7 +313,7 @@ def read_nmea_data(port, baudrate, timeout, duration):
                         msg = pynmea2.parse(nmea_sentence)
 
                         # Create a NMEAData object and print it nicely
-                        nmea_data = NMEAData(msg.sentence_type, msg, data_list)
+                        nmea_data = NMEAData(msg.sentence_type, msg, parsed_sentences)
                         print(nmea_data)
 
                     except pynmea2.ParseError as e:
@@ -324,24 +327,39 @@ def read_nmea_data(port, baudrate, timeout, duration):
         print(f"Error opening serial port: {e}")
 
     # After reading all raw sentences, write to the log file created
-    print(f"Standard and Proprietary logs written to {log_file} for port {port} with baudrate {baudrate}")
-    log_file.close()
+    print(f"Standard and Proprietary logs written to {raw_nmea_log.name} for port {port} with baudrate {baudrate}")
+    raw_nmea_log.close()
 
     # After reading data, write it to an Excel file
-    nmea_data_obj.write_to_excel(port, baudrate)
+    parsed_nmea_data.write_to_excel(port, baudrate)
 
 if __name__ == "__main__":
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S%f')
+    log_folder = f"logs/NMEA_{timestamp}_Run"
+
+    # Create the log folder for each test run
+    os.makedirs(log_folder, exist_ok=True)
+
+    # Redirect console output to a file inside the unique folder
+    sys.stdout = open(f"{log_folder}/console_output_{timestamp}.txt", "a", encoding="utf-8")
+
     devices = {
-        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 30},  # Duration in seconds
-        "device 2": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 60}
+        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
+        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
+        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 10}  # Timeout and Duration in seconds
     }
 
     threads = []
 
+    # Loop through the devices and create a SerialReader thread for each one
     for device, config in devices.items():
-        thread = threading.Thread(target=read_nmea_data, args=(config["port"], config["baudrate"], config["timeout"], config["duration"]))
+        thread = threading.Thread(target=read_nmea_data, args=(config["port"], config["baudrate"], config["timeout"], config["duration"], log_folder))
         threads.append(thread)
         thread.start()
 
+    # Ensure all threads complete before exiting
     for thread in threads:
-        thread.join()  # Ensure all threads complete
+        thread.join()
+
+    # Close the redirected stdout (console output) after all threads finish
+    sys.stdout.close()
