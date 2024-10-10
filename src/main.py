@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 import threading
 from time import time
+import logging
 
 class NMEAData:
     def __init__(self, sentence_type, data, parsed_sentences):
@@ -263,7 +264,7 @@ class NMEAData:
         df = pd.DataFrame(self.parsed_sentences)
         # Ensure unique filename with port, baudrate, and timestamp
         df.to_excel(f"logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx", index=False)
-        print(f"Data written to logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
+        logging.info(f"Data written to logs/NMEA_{timestamp}/{filename}_{port}_{baudrate}_{timestamp}.xlsx")
 
 
 def read_nmea_data(port, baudrate, timeout, duration, log_folder):
@@ -290,7 +291,7 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
             timeout=timeout  # Timeout in seconds
         )
 
-        print(f"Connected to serial port {port} with baudrate {baudrate}. Reading data...")
+        logging.info(f"Connected to serial port {port} with baudrate {baudrate}. Reading data...")
 
         # Continuously read from the serial port
         while time() - start_time < duration:
@@ -302,11 +303,11 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
 
                 # Skip proprietary sentences like $PAIR or $PQTM
                 if nmea_sentence.startswith('$P'):
-                    print(f"Proprietary sentence ignored: {nmea_sentence}")
+                    logging.info(f"Proprietary sentence ignored: {nmea_sentence}")
                     continue
 
                 if nmea_sentence.startswith('$G'):
-                    print(f"Received Standard NMEA Message: {nmea_sentence}")
+                    logging.info(f"Received Standard NMEA Message: {nmea_sentence}")
 
                     # Parse the NMEA sentence using pynmea2
                     try:
@@ -314,20 +315,20 @@ def read_nmea_data(port, baudrate, timeout, duration, log_folder):
 
                         # Create a NMEAData object and print it nicely
                         nmea_data = NMEAData(msg.sentence_type, msg, parsed_sentences)
-                        print(nmea_data)
+                        logging.info(nmea_data)
 
                     except pynmea2.ParseError as e:
-                        print(f"Failed to parse NMEA sentence: {nmea_sentence} - {e}")
+                        logging.info(f"Failed to parse NMEA sentence: {nmea_sentence} - {e}")
 
             except serial.SerialException as e:
-                print(f"Error reading from serial port: {e}")
+                logging.info(f"Error reading from serial port: {e}")
                 break
 
     except serial.SerialException as e:
-        print(f"Error opening serial port: {e}")
+        logging.info(f"Error opening serial port: {e}")
 
     # After reading all raw sentences, write to the log file created
-    print(f"Standard and Proprietary logs written to {raw_nmea_log.name} for port {port} with baudrate {baudrate}")
+    logging.info(f"Standard and Proprietary logs written to {raw_nmea_log.name} for port {port} with baudrate {baudrate}")
     raw_nmea_log.close()
 
     # After reading data, write it to an Excel file
@@ -341,12 +342,20 @@ if __name__ == "__main__":
     os.makedirs(log_folder, exist_ok=True)
 
     # Redirect console output to a file inside the unique folder
-    sys.stdout = open(f"{log_folder}/console_output_{timestamp}.txt", "a", encoding="utf-8")
+    # Configure logging to both file and console
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.FileHandler(f"{log_folder}/console_output_{timestamp}.txt", 'a', encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)  # This logs to the console
+        ]
+    )
 
     devices = {
-        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 1800},  # Timeout and Duration in seconds
-        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 1800},  # Timeout and Duration in seconds
-        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 1800}  # Timeout and Duration in seconds
+        "device 1": {"port": "COM9", "baudrate": 115200, "timeout": 1, "duration": 10},  # Timeout and Duration in seconds
+        "device 2": {"port": "COM7", "baudrate": 115200, "timeout": 1, "duration": 15},  # Timeout and Duration in seconds
+        "device 3": {"port": "COM10", "baudrate": 921600, "timeout": 1, "duration": 20}  # Timeout and Duration in seconds
     }
 
     threads = []
